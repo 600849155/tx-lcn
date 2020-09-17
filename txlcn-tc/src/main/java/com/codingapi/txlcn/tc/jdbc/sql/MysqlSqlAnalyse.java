@@ -1,15 +1,14 @@
 package com.codingapi.txlcn.tc.jdbc.sql;
 
 import com.codingapi.txlcn.p6spy.common.StatementInformation;
-import com.codingapi.txlcn.tc.jdbc.database.DataBaseContext;
-import com.codingapi.txlcn.tc.jdbc.database.TableInfo;
-import com.codingapi.txlcn.tc.jdbc.database.TableList;
-import com.codingapi.txlcn.tc.jdbc.sql.strategy.MysqlAnalyseContextEnum;
+import com.codingapi.txlcn.tc.jdbc.sql.strategy.AnalyseStrategryFactory;
+import com.codingapi.txlcn.tc.jdbc.sql.strategy.SqlSqlAnalyseHandler;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import net.sf.jsqlparser.parser.CCJSqlParserUtil;
-import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.parser.CCJSqlParserManager;
+import net.sf.jsqlparser.statement.Statement;
 
+import java.io.StringReader;
 import java.sql.Connection;
 import java.sql.SQLException;
 
@@ -21,6 +20,12 @@ import java.sql.SQLException;
 @Slf4j
 public class MysqlSqlAnalyse implements SqlAnalyse {
 
+    private AnalyseStrategryFactory analyseStrategryFactory;
+
+    public MysqlSqlAnalyse(AnalyseStrategryFactory analyseStrategryFactory) {
+        this.analyseStrategryFactory = analyseStrategryFactory;
+    }
+
     @Override
     public String sqlType() {
         return "mysql";
@@ -29,9 +34,17 @@ public class MysqlSqlAnalyse implements SqlAnalyse {
     @SneakyThrows
     @Override
     public String analyse(String sql,StatementInformation statementInformation)  throws SQLException {
-        log.debug("mysql analyse:{}",sql);
-        Connection connection =  statementInformation.getConnectionInformation().getConnection();
-        return MysqlAnalyseContextEnum.valueOf(sql.toUpperCase().substring(0,6)).executeStrategry(sql,connection);
+        log.debug("mysql analyse:{}", sql);
+        Connection connection = statementInformation.getConnectionInformation().getConnection();
+        // sql.toUpperCase().substring(0,6) 这样实现有风险
+        // if else 实现并不是很优雅
+        CCJSqlParserManager parser = new CCJSqlParserManager();
+        Statement stmt = parser.parse(new StringReader(sql));
+        SqlSqlAnalyseHandler sqlSqlAnalyseHandler =  analyseStrategryFactory.getInvokeStrategy(sqlType(),stmt);
+        if(sqlSqlAnalyseHandler==null){
+            return sql;
+        }
+        return sqlSqlAnalyseHandler.analyse(sql,connection,stmt);
     }
 
     @Override

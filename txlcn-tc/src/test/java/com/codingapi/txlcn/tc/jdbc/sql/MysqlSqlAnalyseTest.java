@@ -5,68 +5,28 @@ import com.codingapi.txlcn.tc.jdbc.database.DataBaseContext;
 import com.codingapi.txlcn.tc.jdbc.database.JdbcAnalyseUtils;
 import com.codingapi.txlcn.tc.jdbc.database.TableInfo;
 import com.codingapi.txlcn.tc.jdbc.database.TableList;
-import com.codingapi.txlcn.tc.jdbc.sql.strategy.MysqlAnalyseContextEnum;
-import com.codingapi.txlcn.tc.jdbc.sql.strategy.MysqlUpdateAnalyseStrategry;
-import com.codingapi.txlcn.tc.jdbc.sql.strategy.SqlAnalyseInfo;
-import com.codingapi.txlcn.tc.utils.ListUtil;
-import com.google.common.collect.Maps;
-import com.sun.deploy.util.StringUtils;
-import com.sun.xml.internal.bind.v2.schemagen.xmlschema.Union;
+import com.codingapi.txlcn.tc.jdbc.sql.analyse.MysqlSqlDetailAnalyse;
+import com.codingapi.txlcn.tc.jdbc.sql.strategy.mysql.MysqlInsertAnalyseStrategy;
+import com.codingapi.txlcn.tc.jdbc.sql.strategy.mysql.MysqlDeleteAnalyseStrategy;
+import com.codingapi.txlcn.tc.jdbc.sql.strategy.mysql.MysqlUpdateAnalyseStrategy;
 import lombok.extern.slf4j.Slf4j;
 import net.sf.jsqlparser.JSQLParserException;
-import net.sf.jsqlparser.expression.*;
-import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserManager;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
-import net.sf.jsqlparser.parser.JSqlParser;
-import net.sf.jsqlparser.parser.SimpleNode;
-import net.sf.jsqlparser.schema.Column;
-import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.*;
-import net.sf.jsqlparser.statement.alter.Alter;
-import net.sf.jsqlparser.statement.alter.sequence.AlterSequence;
-import net.sf.jsqlparser.statement.comment.Comment;
-import net.sf.jsqlparser.statement.create.index.CreateIndex;
-import net.sf.jsqlparser.statement.create.schema.CreateSchema;
-import net.sf.jsqlparser.statement.create.sequence.CreateSequence;
-import net.sf.jsqlparser.statement.create.table.CreateTable;
-import net.sf.jsqlparser.statement.create.view.AlterView;
-import net.sf.jsqlparser.statement.create.view.CreateView;
 import net.sf.jsqlparser.statement.delete.Delete;
-import net.sf.jsqlparser.statement.drop.Drop;
-import net.sf.jsqlparser.statement.execute.Execute;
-import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.insert.Insert;
-import net.sf.jsqlparser.statement.merge.Merge;
-import net.sf.jsqlparser.statement.replace.Replace;
-import net.sf.jsqlparser.statement.select.*;
-import net.sf.jsqlparser.statement.truncate.Truncate;
 import net.sf.jsqlparser.statement.update.Update;
-import net.sf.jsqlparser.statement.upsert.Upsert;
-import net.sf.jsqlparser.statement.values.ValuesStatement;
-import net.sf.jsqlparser.util.TablesNamesFinder;
-import org.apache.commons.dbutils.BaseResultSetHandler;
 import org.apache.commons.dbutils.DbUtils;
 import org.apache.commons.dbutils.QueryRunner;
-import org.apache.commons.dbutils.ResultSetHandler;
-import org.apache.commons.dbutils.handlers.ArrayHandler;
-import org.apache.commons.dbutils.handlers.ArrayListHandler;
-import org.apache.commons.dbutils.handlers.ColumnListHandler;
-import org.apache.commons.dbutils.handlers.MapListHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import javax.sql.DataSource;
 import java.io.StringReader;
-import java.io.UnsupportedEncodingException;
 import java.sql.Connection;
-import java.sql.JDBCType;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -81,6 +41,10 @@ public class MysqlSqlAnalyseTest {
 
     @Autowired
     private DataSource dataSource;
+
+
+
+
 
     @Test
     public void analyse() throws SQLException, JSQLParserException {
@@ -108,7 +72,17 @@ public class MysqlSqlAnalyseTest {
         String sql = "DELETE  t2,t3 FROM lcn_sql_parse_test2 t2 ,lcn_sql_parse_test3 t3 where t3.job = t2.dept_name AND t2.dept_name = 'test' and t3.name = 'a' ";
         sql = "update lcn_sql_parse_test3 t3 ,lcn_sql_parse_test2 t2 set t3.age = 56 ,t2.dept_name = 'dev' where t3.job = t2.dept_name and t2.dept_name = 'test'";
         Connection connection = dataSource.getConnection();
-        MysqlAnalyseContextEnum.valueOf(sql.toUpperCase().substring(0,6)).executeStrategry(sql,connection);
+        String catalog = connection.getCatalog();
+        DataBaseContext.getInstance().push(catalog, JdbcAnalyseUtils.analyse(connection));
+        CCJSqlParserManager parser = new CCJSqlParserManager();
+        Statement stmt = parser.parse(new StringReader(sql));
+        if (stmt instanceof Update) {
+            MysqlUpdateAnalyseStrategy mysqlInsertAnalyseStrategy = new MysqlUpdateAnalyseStrategy(new MysqlSqlDetailAnalyse());
+            mysqlInsertAnalyseStrategy.analyse(sql, connection, stmt);
+        } else if (stmt instanceof Delete) {
+            MysqlDeleteAnalyseStrategy mysqlInsertAnalyseStrategy = new MysqlDeleteAnalyseStrategy(new MysqlSqlDetailAnalyse());
+            mysqlInsertAnalyseStrategy.analyse(sql, connection, stmt);
+        }
     }
 
     @Test
@@ -117,6 +91,16 @@ public class MysqlSqlAnalyseTest {
         sql = "insert into lcn_sql_parse_test1 (id, name, sex, job, home_address, age, dept_id) values (null,'gz','1','test','bjc',12,1)";
         sql = "INSERT INTO lcn_sql_parse_test1 (name, sex, job, home_address, age, dept_id) VALUES ('gz', '1', 'test', 'bjc', 12, 4),('gz', '1', 'test', 'bjc', 12, 5),('gz', '1', 'test', 'bjc', 12, 6)";
         Connection connection = dataSource.getConnection();
-        MysqlAnalyseContextEnum.valueOf(sql.toUpperCase().substring(0,6)).executeStrategry(sql,connection);
+        String catalog = connection.getCatalog();
+        DataBaseContext.getInstance().push(catalog, JdbcAnalyseUtils.analyse(connection));
+        CCJSqlParserManager parser = new CCJSqlParserManager();
+        Statement stmt = parser.parse(new StringReader(sql));
+        if (stmt instanceof Insert) {
+            MysqlInsertAnalyseStrategy mysqlInsertAnalyseStrategy = new MysqlInsertAnalyseStrategy(new MysqlSqlDetailAnalyse());
+            String s = mysqlInsertAnalyseStrategy.analyse(sql, connection, stmt);
+            System.out.println(s);
+        }
     }
+
+
 }
